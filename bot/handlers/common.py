@@ -1,30 +1,30 @@
+from html import escape
+
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from ..db import Database
-from ..keyboards import BTN_SETTINGS, MAIN_MENU, inline
+from ..keyboards import BTN_BACK, BTN_MORE, BTN_SETTINGS, MAIN_MENU, MORE_MENU, inline
 from ..timeutil import valid_tz
 
 router = Router()
 
 HELP = (
-    "Я помогаю с учёбой: расписание, напоминания о парах и дедлайнах, задачи, заметки и лекции.\n\n"
+    "<b>Что я умею</b>\n"
+    "Расписание, напоминания о парах и дедлайнах, задачи, заметки и лекции.\n\n"
     "<b>С чего начать</b>\n"
-    "1. Нажми «⬆️ Загрузить расписание» и пришли расписание текстом или файлом (.ics, Excel, CSV).\n"
-    "2. Я буду напоминать о каждой паре за 15 минут (меняется в «⚙️ Настройки»).\n\n"
-    "<b>Команды</b>\n"
-    "/today, /tomorrow, /week — расписание\n"
-    "/task Математика: решить №5 до 30.10 18:00 — задача с дедлайном\n"
-    "/tasks — список задач\n"
-    "/note Физика: формула Ома U = IR — заметка\n"
-    "/notes — заметки\n"
-    "/lectures — лекции по предметам (чтобы сохранить лекцию, просто пришли файл, фото или голосовое)\n"
-    "/subject Математика — создать предмет, /subjects — список предметов\n"
-    "/remind 10 — напоминать за 10 минут до пары\n"
+    "Нажми «Ещё…» → «Загрузить расписание» и пришли его текстом или файлом (.ics, Excel, CSV). "
+    "Перед каждой парой я напомню за 15 минут.\n\n"
+    "<b>Быстрые команды</b>\n"
+    "/task Математика: №5 до 30.10 18:00 — задача\n"
+    "/note Физика: U = IR — заметка\n"
+    "/subject Химия — новый предмет\n"
+    "Лекцию сохраняй просто файлом, фото или голосовым.\n\n"
+    "/remind 10 — за сколько минут напоминать\n"
     "/tz Europe/Moscow — часовой пояс\n"
-    "/cancel — отменить текущее действие"
+    "/cancel — отменить действие"
 )
 
 REMIND_OPTIONS = [5, 10, 15, 30, 60]
@@ -34,12 +34,22 @@ REMIND_OPTIONS = [5, 10, 15, 30, 60]
 async def start(message: Message, db: Database, default_tz: str, state: FSMContext):
     await state.clear()
     await db.ensure_user(message.from_user.id, default_tz)
-    await message.answer(f"Привет, {message.from_user.first_name}! 👋\n\n{HELP}", reply_markup=MAIN_MENU)
+    await message.answer(f"Привет, {escape(message.from_user.first_name)}!\n\n{HELP}", reply_markup=MAIN_MENU)
 
 
 @router.message(Command("help"))
 async def help_(message: Message):
     await message.answer(HELP, reply_markup=MAIN_MENU)
+
+
+@router.message(F.text == BTN_MORE)
+async def more(message: Message):
+    await message.answer("Остальные разделы", reply_markup=MORE_MENU)
+
+
+@router.message(F.text == BTN_BACK)
+async def back(message: Message):
+    await message.answer("Главное меню", reply_markup=MAIN_MENU)
 
 
 @router.message(Command("cancel"))
@@ -52,12 +62,11 @@ def _settings_view(user) -> tuple[str, object]:
     status = "включены" if user["reminders_on"] else "выключены"
     text = (
         "<b>Настройки</b>\n"
-        f"Напоминания: {status}\n"
-        f"Напоминать до пары за: {user['remind_before']} мин\n"
+        f"Напоминания {status}, за {user['remind_before']} мин до пары\n"
         f"Часовой пояс: {user['tz']} (сменить: /tz Europe/Moscow)"
     )
     rows = [[(("• " if m == user["remind_before"] else "") + f"{m} мин", f"rb:{m}") for m in REMIND_OPTIONS]]
-    rows.append([("🔕 Выключить напоминания" if user["reminders_on"] else "🔔 Включить напоминания", "rtoggle")])
+    rows.append([("Выключить напоминания" if user["reminders_on"] else "Включить напоминания", "rtoggle")])
     return text, inline(rows)
 
 
