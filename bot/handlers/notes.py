@@ -60,6 +60,7 @@ async def notes_menu(message: Message, db: Database, default_tz: str):
     kb = subjects_keyboard(
         subjects, "nsub", extra=[("🕘 Последние", "nlast"), ("➕ Новая заметка", "note_add")]
     )
+    kb.inline_keyboard.append(inline([[("📁 Новый предмет", "subj_new")]]).inline_keyboard[0])
     await message.answer("<b>Заметки</b>\nВыбери предмет:", reply_markup=kb)
 
 

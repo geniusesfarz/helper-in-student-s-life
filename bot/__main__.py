@@ -8,7 +8,7 @@ from aiogram.types import BotCommand
 
 from .config import load_config
 from .db import Database
-from .handlers import common, lectures, notes, schedule, tasks
+from .handlers import common, lectures, notes, schedule, subjects, tasks
 from .keyboards import MENU_BUTTONS
 from .reminders import reminder_loop
 
@@ -33,6 +33,8 @@ COMMANDS = [
     BotCommand(command="notes", description="Заметки"),
     BotCommand(command="note", description="Добавить заметку"),
     BotCommand(command="lectures", description="Лекции по предметам"),
+    BotCommand(command="subject", description="Создать предмет"),
+    BotCommand(command="subjects", description="Список предметов"),
     BotCommand(command="schedule", description="Загрузить расписание"),
     BotCommand(command="settings", description="Настройки напоминаний"),
     BotCommand(command="help", description="Помощь"),
@@ -49,7 +51,7 @@ async def main() -> None:
     dp = Dispatcher(db=db, default_tz=config.default_tz)
     dp.message.outer_middleware(reset_state_on_menu)
     # common первым: /cancel и /start должны работать в любом состоянии
-    dp.include_routers(common.router, schedule.router, tasks.router, notes.router, lectures.router)
+    dp.include_routers(common.router, schedule.router, tasks.router, notes.router, subjects.router, lectures.router)
 
     await bot.set_my_commands(COMMANDS)
     reminders = asyncio.create_task(reminder_loop(bot, db))

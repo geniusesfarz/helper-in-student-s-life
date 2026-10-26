@@ -48,6 +48,11 @@ CREATE TABLE IF NOT EXISTS lectures (
     title TEXT NOT NULL DEFAULT '',
     created TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS subjects (
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    PRIMARY KEY (user_id, name)
+);
 CREATE TABLE IF NOT EXISTS sent_lesson_reminders (
     lesson_id INTEGER NOT NULL,
     date TEXT NOT NULL,
@@ -115,13 +120,23 @@ class Database:
 
     async def subjects(self, user_id: int) -> list[str]:
         cur = await self.conn.execute(
-            "SELECT DISTINCT subject FROM lessons WHERE user_id = ? "
+            "SELECT name FROM subjects WHERE user_id = ? "
+            "UNION SELECT DISTINCT subject FROM lessons WHERE user_id = ? "
             "UNION SELECT DISTINCT subject FROM notes WHERE user_id = ? AND subject != '' "
             "UNION SELECT DISTINCT subject FROM lectures WHERE user_id = ? AND subject != '' "
             "ORDER BY 1",
-            (user_id, user_id, user_id),
+            (user_id, user_id, user_id, user_id),
         )
         return [r[0] for r in await cur.fetchall()]
+
+    async def add_subject(self, user_id: int, name: str) -> str:
+        """Создаёт предмет; если такой уже есть (без учёта регистра), возвращает существующее название."""
+        for existing in await self.subjects(user_id):
+            if existing.lower() == name.lower():
+                return existing
+        await self.conn.execute("INSERT INTO subjects (user_id, name) VALUES (?, ?)", (user_id, name))
+        await self.conn.commit()
+        return name
 
     async def lesson_reminder_sent(self, lesson_id: int, date: str) -> bool:
         cur = await self.conn.execute(

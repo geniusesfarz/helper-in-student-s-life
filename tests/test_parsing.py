@@ -66,3 +66,55 @@ NOW = datetime(2026, 10, 26, 12, 0)
 ])
 def test_parse_due(text, body, due):
     assert parse_due(text, NOW) == (body, due)
+
+
+ICS = b"""BEGIN:VCALENDAR\r
+VERSION:2.0\r
+BEGIN:VEVENT\r
+DTSTART:20261026T040000Z\r
+DTEND:20261026T053000Z\r
+SUMMARY:\xd0\x9c\xd0\xb0\xd1\x82\xd0\xb5\xd0\xbc\xd0\xb0\xd1\x82\xd0\xb8\xd0\xba\xd0\xb0\r
+LOCATION:\xd0\xb0\xd1\x83\xd0\xb4. 101\\, \xd0\xba\xd0\xbe\xd1\x80\xd0\xbf\xd1\x83\xd1\x81 2\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+DTSTART:20261102T040000Z\r
+DTEND:20261102T053000Z\r
+SUMMARY:\xd0\x9c\xd0\xb0\xd1\x82\xd0\xb5\xd0\xbc\xd0\xb0\xd1\x82\xd0\xb8\xd0\xba\xd0\xb0\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+DTSTART;TZID=Europe/Moscow:20261027T120000\r
+DURATION:PT1H20M\r
+SUMMARY:Physics lecture with a very long title that is\r
+  folded\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+DTSTART;VALUE=DATE:20261028\r
+SUMMARY:Holiday\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+DTSTART:20261029T090000\r
+SUMMARY:Cancelled\r
+STATUS:CANCELLED\r
+END:VEVENT\r
+END:VCALENDAR\r
+"""
+
+
+def test_parse_ics():
+    from bot.schedule_parser import parse_ics
+
+    lessons = parse_ics(ICS, "Asia/Tashkent")
+    assert len(lessons) == 2  # повтор схлопнут, весь день и отменённое пропущены
+    math, phys = lessons
+    assert (math.weekday, math.start, math.end) == (0, time(9, 0), time(10, 30))
+    assert math.subject == "Математика" and math.room == "ауд. 101, корпус 2"
+    # 12:00 по Москве = 14:00 по Ташкенту
+    assert (phys.weekday, phys.start, phys.end) == (1, time(14, 0), time(15, 20))
+    assert phys.subject.endswith("is folded")
+
+
+def test_parse_ics_empty():
+    from bot.schedule_parser import parse_ics
+
+    with pytest.raises(ScheduleParseError):
+        parse_ics(b"BEGIN:VCALENDAR\nEND:VCALENDAR\n", "Asia/Tashkent")

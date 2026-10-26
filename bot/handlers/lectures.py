@@ -5,7 +5,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.types import CallbackQuery, Message
 
 from ..db import Database
-from ..keyboards import BTN_LECTURES, subjects_keyboard
+from ..keyboards import BTN_LECTURES, inline, subjects_keyboard
 from ..text_utils import split_subject
 
 router = Router()
@@ -55,7 +55,11 @@ async def save_lecture(message: Message, db: Database, default_tz: str):
     if subject:
         await message.reply(f"Сохранил в «{escape(subject)}» 📚")
         return
-    kb = subjects_keyboard(subjects, f"lset:{lecture_id}", extra=[(NO_SUBJECT, f"lset:{lecture_id}:-1")])
+    kb = subjects_keyboard(
+        subjects,
+        f"lset:{lecture_id}",
+        extra=[("✏️ Новый предмет", f"subj_new:{lecture_id}"), (NO_SUBJECT, f"lset:{lecture_id}:-1")],
+    )
     await message.reply("К какому предмету отнести?", reply_markup=kb)
 
 
@@ -77,11 +81,15 @@ async def lectures_menu(message: Message, db: Database, default_tz: str):
     groups = await db.lecture_subjects(message.from_user.id)
     if not groups:
         await message.answer(
-            "Лекций пока нет. Просто пришли мне файл, фото конспекта или голосовое. "
-            "Подпиши его названием предмета, например «Математика», и я разложу всё по папкам."
+            "Лекций пока нет. Просто пришли мне файл, фото конспекта или голосовое, "
+            "а я спрошу, к какому предмету его отнести.\n"
+            "Предмет можно создать заранее кнопкой ниже.",
+            reply_markup=inline([[("➕ Новый предмет", "subj_new")]]),
         )
         return
-    kb = subjects_keyboard([f"{s or NO_SUBJECT} ({n})" for s, n in groups], "lsub")
+    kb = subjects_keyboard(
+        [f"{s or NO_SUBJECT} ({n})" for s, n in groups], "lsub", extra=[("➕ Новый предмет", "subj_new")]
+    )
     await message.answer("<b>Лекции</b>\nВыбери предмет:", reply_markup=kb)
 
 

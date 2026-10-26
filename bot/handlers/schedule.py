@@ -13,6 +13,7 @@ from ..schedule_parser import (
     WEEKDAY_NAMES,
     ScheduleParseError,
     parse_csv,
+    parse_ics,
     parse_text,
     parse_xlsx,
 )
@@ -34,6 +35,8 @@ UPLOAD_HELP = (
     "а под ним пары без дня.\n\n"
     "Или пришли файл <b>Excel (.xlsx) или CSV</b> с колонками: "
     "день, время (09:00-10:30), предмет, аудитория, преподаватель.\n\n"
+    "Или файл календаря <b>.ics</b> (экспорт из Google Календаря, Outlook или с сайта вуза): "
+    "пары из него соберу в расписание на неделю.\n\n"
     "Новое расписание заменит старое. /cancel — отмена."
 )
 
@@ -72,10 +75,12 @@ async def schedule_file(message: Message, state: FSMContext, db: Database, bot: 
             lessons = parse_xlsx(data)
         elif name.endswith(".csv"):
             lessons = parse_csv(data)
+        elif name.endswith(".ics"):
+            lessons = parse_ics(data, await _user_tz(db, message.from_user.id, default_tz))
         elif name.endswith(".txt"):
             lessons = parse_text(data.decode("utf-8-sig", errors="replace"))
         else:
-            await message.answer("Поддерживаются файлы .xlsx, .csv и .txt.")
+            await message.answer("Поддерживаются файлы .ics, .xlsx, .csv и .txt.")
             return
     except ScheduleParseError as e:
         await message.answer(f"Не смог разобрать файл:\n{escape(str(e))}\n\nИсправь и пришли снова или /cancel.")
