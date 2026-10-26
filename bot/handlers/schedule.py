@@ -5,12 +5,14 @@ from aiogram import Bot, F, Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 from ..db import Database
-from ..keyboards import BTN_SCHEDULE, BTN_TODAY, BTN_TOMORROW, BTN_WEEK, MAIN_MENU
+from ..keyboards import BTN_SCHEDULE, BTN_TODAY, BTN_TOMORROW, BTN_WEEK, MAIN_MENU, inline
+from ..render import DayBlock, render_schedule
 from ..schedule_parser import (
     WEEKDAY_NAMES,
+    WEEKDAY_SHORT,
     ScheduleParseError,
     parse_csv,
     parse_ics,
@@ -109,12 +111,19 @@ async def _save(message: Message, state: FSMContext, db: Database, lessons, defa
     )
 
 
+def _image_button(kind: str):
+    return inline([[("🖼 Картинкой", f"img:{kind}")]])
+
+
 @router.message(Command("today"))
 @router.message(F.text == BTN_TODAY)
 async def today(message: Message, db: Database, default_tz: str):
     now = local_now(await _user_tz(db, message.from_user.id, default_tz))
     wd = now.weekday()
-    await message.answer(await day_text(db, message.from_user.id, wd, f"Сегодня, {WEEKDAY_NAMES[wd].lower()}"))
+    await message.answer(
+        await day_text(db, message.from_user.id, wd, f"Сегодня, {WEEKDAY_NAMES[wd].lower()}"),
+        reply_markup=_image_button("today"),
+    )
 
 
 @router.message(Command("tomorrow"))
@@ -122,7 +131,10 @@ async def today(message: Message, db: Database, default_tz: str):
 async def tomorrow(message: Message, db: Database, default_tz: str):
     now = local_now(await _user_tz(db, message.from_user.id, default_tz)) + timedelta(days=1)
     wd = now.weekday()
-    await message.answer(await day_text(db, message.from_user.id, wd, f"Завтра, {WEEKDAY_NAMES[wd].lower()}"))
+    await message.answer(
+        await day_text(db, message.from_user.id, wd, f"Завтра, {WEEKDAY_NAMES[wd].lower()}"),
+        reply_markup=_image_button("tomorrow"),
+    )
 
 
 @router.message(Command("week"))
@@ -138,4 +150,55 @@ async def week(message: Message, db: Database, default_tz: str):
         day = [l for l in lessons if l["weekday"] == wd]
         if day:
             blocks.append(f"<b>{WEEKDAY_NAMES[wd]}</b>\n" + "\n".join(format_lesson(l) for l in day))
-    await message.answer("\n\n".join(blocks))
+    await message.answer("\n\n".join(blocks), reply_markup=_image_button("week"))
+
+
+def _current_lesson_id(lessons, now) -> int | None:
+    hm = now.strftime("%H:%M")
+    return next((l["id"] for l in lessons if l["start"] <= hm < l["end"]), None)
+
+
+async def build_image(db: Database, user_id: int, tz: str, kind: str) -> bytes | None:
+    now = local_now(tz)
+    subjects = sorted({l["subject"] for l in await db.all_lessons(user_id)})
+    monday = now.date() - timedelta(days=now.weekday())
+
+    def block(d, lessons):
+        is_today = d == now.date()
+        return DayBlock(
+            title=f"{WEEKDAY_SHORT[d.weekday()]} {d.day}",
+            lessons=lessons,
+            highlight=is_today and kind == "week",
+            current_lesson_id=_current_lesson_id(lessons, now) if is_today else None,
+        )
+
+    if kind in ("today", "tomorrow"):
+        d = now.date() + timedelta(days=0 if kind == "today" else 1)
+        lessons = await db.lessons_for_day(user_id, d.weekday())
+        title = f"{'Сегодня' if kind == 'today' else 'Завтра'}, {WEEKDAY_NAMES[d.weekday()].lower()}"
+        return render_schedule(title, [block(d, lessons)], subjects)
+
+    days = []
+    for i in range(7):
+        d = monday + timedelta(days=i)
+        lessons = await db.lessons_for_day(user_id, d.weekday())
+        if lessons:
+            days.append(block(d, lessons))
+    if not days:
+        return None
+    sunday = monday + timedelta(days=6)
+    return render_schedule(f"Неделя {monday:%d.%m} – {sunday:%d.%m}", days, subjects)
+
+
+@router.callback_query(F.data.startswith("img:"))
+async def send_image(call: CallbackQuery, db: Database, bot: Bot, default_tz: str):
+    kind = call.data[4:]
+    if kind not in ("today", "tomorrow", "week"):
+        await call.answer()
+        return
+    await call.answer("Рисую…")
+    png = await build_image(db, call.from_user.id, await _user_tz(db, call.from_user.id, default_tz), kind)
+    if png is None:
+        await call.message.answer("Расписание пока пустое. Загрузи его: /schedule")
+        return
+    await bot.send_photo(call.message.chat.id, BufferedInputFile(png, filename=f"schedule-{kind}.png"))

@@ -10,6 +10,7 @@ from aiogram.types import CallbackQuery, Chat, Message, Update, User
 
 from bot.__main__ import reset_state_on_menu
 from bot.db import Database
+from bot.handlers.schedule import build_image
 from bot.handlers import common, lectures, notes, schedule, subjects, tasks
 from bot.keyboards import BTN_TODAY
 from bot.reminders import check_once
@@ -193,3 +194,25 @@ async def _bytes(data):
     import io
 
     return io.BytesIO(data)
+
+
+def test_schedule_image():
+    from aiogram.methods import SendPhoto
+
+    async def scenario():
+        h = Harness()
+        await h.setup()
+        await h.send("/start")
+        await h.send("/schedule")
+        await h.send("Пн 09:00-10:30 Математика | 101\nВт 10:00-11:30 Физика")
+        for kind in ("today", "week"):
+            h.session.sent.clear()
+            msg = Message(message_id=1, date=datetime.now(), chat=CHAT, from_user=USER, text="x")
+            cb = CallbackQuery(id=kind, from_user=USER, chat_instance="c", message=msg, data=f"img:{kind}")
+            await h.dp.feed_update(h.bot, Update(update_id=1000 + len(kind), callback_query=cb))
+            assert any(isinstance(m, SendPhoto) for m in h.session.sent)
+        png = await build_image(h.db, 42, TZ, "week")
+        assert png[:8] == b"\x89PNG\r\n\x1a\n"
+        await h.db.close()
+
+    asyncio.run(scenario())
