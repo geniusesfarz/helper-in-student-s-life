@@ -216,3 +216,36 @@ def test_schedule_image():
         await h.db.close()
 
     asyncio.run(scenario())
+
+
+def test_minimal_menu_and_day_navigation():
+    async def scenario():
+        h = Harness()
+        await h.setup()
+        await h.send("/start")
+        menu = h.session.sent[-1].reply_markup
+        assert [[b.text for b in row] for row in menu.keyboard] == [["Сегодня", "Неделя"], ["Задачи", "Ещё…"]]
+        assert "Остальные разделы" in await h.send("Ещё…")
+        assert "Главное меню" in await h.send("‹ Назад")
+
+        await h.send("/schedule")
+        await h.send("Пн 09:00-10:30 Математика | ауд. 101 | Иванов И.И.\nПн 10:45-12:15 Физика")
+        await h.db.add_task(42, "лаба", "Физика", local_now(TZ) + timedelta(hours=3))
+
+        today = await h.send("/today")
+        assert "Сегодня ·" in today and "Дедлайн: <b>Физика: лаба</b>" in today
+        kb = h.session.sent[-1].reply_markup.inline_keyboard
+        assert [b.callback_data for b in kb[0]] == ["day:-1", "week", "day:1"]
+        assert kb[1][0].callback_data == "img:0"
+
+        # листаем до ближайшего понедельника
+        offset = (7 - local_now(TZ).weekday()) % 7
+        monday = await h.press(f"day:{offset}")
+        assert "2 пары · 09:00–12:15" in monday and "<i>ауд. 101 · Иванов И.И.</i>" in monday
+        assert "Математика" in await h.press("week")
+
+        # старая кнопка с эмодзи ещё работает
+        assert "Задач" in await h.send("✅ Задачи")
+        await h.db.close()
+
+    asyncio.run(scenario())

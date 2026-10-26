@@ -9,13 +9,16 @@ from aiogram.types import BotCommand
 from .config import load_config
 from .db import Database
 from .handlers import common, lectures, notes, schedule, subjects, tasks
-from .keyboards import MENU_BUTTONS
+from .keyboards import LEGACY_BUTTONS, MENU_BUTTONS
 from .reminders import reminder_loop
 
 
 async def reset_state_on_menu(handler, event, data):
     """Кнопка меню или команда прерывают незаконченный ввод (задачи, расписания и т.п.)."""
     text = event.text or ""
+    if text in LEGACY_BUTTONS:
+        text = LEGACY_BUTTONS[text]
+        event = event.model_copy(update={"text": text})
     if text in MENU_BUTTONS or text.startswith("/"):
         state = data.get("state")
         if state is not None:
